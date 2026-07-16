@@ -3,9 +3,7 @@ from sqlalchemy import Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 engine = create_engine(
-    "sqlite:///powder_tracker.db",
-    echo=True
-)
+    "sqlite:///powder_tracker.db")
 
 Session = sessionmaker(bind=engine)
 

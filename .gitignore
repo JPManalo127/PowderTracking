@@ -10,8 +10,6 @@ Scripts/
 etc/
 share/
 
-# Databases
-*.db
 
 # Secrets
 .env
