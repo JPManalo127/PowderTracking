@@ -24,7 +24,7 @@ with col2:
         "Show Archived",
         value=False)
 query=session.query(Batch).filter(
-    Batch.batch_number.like("RB%")
+    Batch.batch_number.like("RB%"))
 if not show_archived:
     query=query.filter_by(
         status="ACTIVE")

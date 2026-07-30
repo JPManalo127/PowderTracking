@@ -1,16 +1,15 @@
 import streamlit as st
-from database import Session, Batch, Dispenser, DispenserLayer
+from database import Session, Batch, Dispenser, DispenserLayer, PowderTransaction
+from datetime import date
 
 session = Session()
 
 st.title("Powder Inventory")
 
 batches = session.query(Batch).all()
-
+customers=["Baker","Canada"]
 with st.expander("+ Add New Batch"):
-
     with st.form("add_batch"):
-
         batch_number = st.text_input("Batch Number")
         grade = st.selectbox(
             "Grade",
@@ -25,12 +24,10 @@ with st.expander("+ Add New Batch"):
             step=0.1,
             value=0.0
         )
-        location = st.text_input("Location")
-
+        location = st.selectbox("Location",
+                                ["Powder Storage","Outside Lab","Inside Lab"])
         submitted = st.form_submit_button("Add Batch")
-
         if submitted:
-
             batch = Batch(
                 batch_number=batch_number,
                 grade=grade,
@@ -38,14 +35,58 @@ with st.expander("+ Add New Batch"):
                 kg=kg,
                 location=location
             )
-
             session.add(batch)
+            transaction=PowderTransaction(
+                transaction_date=date.today(),
+                grade=grade,
+                heat_no=batch_number,
+                condition=condition,
+                amount=kg,
+                transaction_type="Powder Received"
+                )
+            session.add(transaction)
             session.commit()
-
             st.success("Batch added.")
-
+with st.expander("Ship Batch"):
+    active_batches=(
+        session.query(Batch)
+        .filter_by(status="ACTIVE")
+        .all())
+    batch_options={
+        f"{b.batch_number} | {b.grade} | {b.kg:.2f} kg": b
+        for b in active_batches}
+    selected_batch_label=st.selectbox(
+        "Select Batch",
+        batch_options.keys())
+    selected_batch=batch_options[selected_batch_label]
+    customer=st.selectbox(
+        "Customer",
+        customers)
+    ship_weight=st.number_input(
+        "Weight to Ship (kg)",
+        min_value=0.0,
+        step=0.1)
+    ship=st.button("Ship")
+    if ship:
+        if ship_weight<=0:
+            st.error("Weight must be greater than zero.")
+        elif ship_weight>selected_batch.kg:
+            st.error(f"Only {selected_batch.kg:.2f} kg available.")
+        else:
+            selected_batch.kg -= ship_weight
+            transaction=PowderTransaction(
+                transaction_date=date.today(),
+                grade=selected_batch.grade,
+                heat_no=selected_batch.batch_number,
+                condition=selected_batch.condition,
+                amount=-ship_weight,
+                transaction_type=f"To {customer}",
+                reference_id=selected_batch.id)
+            session.add(transaction)
+            session.commit()
+            st.success(f"{ship_weight:.2f} kg shipped to {customer}")
+            st.rerun()
 st.divider()
-
 st.header("Current Inventory")
 show_archived = st.checkbox(
     "Show Archived Batches",
@@ -125,25 +166,52 @@ for grade_name, grade_batches in grades.items():
                             value=batch.location or "")
                         save = st.form_submit_button("Save Changes")
                         if save:
-
-                            batch.grade = grade
-                            batch.condition = condition
-                            batch.kg = kg
-                            batch.location = location
-                            session.commit()
-                            st.success("Batch updated.")
+                            old_kg=batch.kg or 0
+                            new_kg = kg
+                            if new_kg < old_kg:
+                                st.error(
+                                    "Quantity reductions are not allowed."
+                                    "Investigate and correct transaction."
+                                    )
+                            else:
+                                difference=new_kg - old_kg
+                                batch.grade=grade
+                                batch.condition=condition
+                                batch.kg=new_kg
+                                batch.location=location
+                                if difference>0:
+                                    transaction=PowderTransaction(
+                                        transaction_date=date.today(),
+                                        grade=batch.grade,
+                                        heat_no=batch.batch_number,
+                                        condition=batch.condition,
+                                        amount=difference,
+                                        transaction_type="Powder Received",
+                                        reference_id=batch.id)
+                                    session.add(transaction)
+                                session.commit()
+                                st.success("Batch updated")
+                                st.rerun()
                     st.divider()
-                    archive=st.button(
-                        "Archive Batch",
-                        key=f"archive_{batch.id}"
-                        )
-                    if archive:
-                        batch.status = "ARCHIVED"
-                        session.commit()
-                        st.success(
-                            f"{batch.batch_number} archived."
-                            )
-                        st.rerun()
+                    if batch.status == "ACTIVE":
+                        archive = st.button(
+                            "Archive Batch",
+                            key=f"archive_{batch.id}")
+                        if archive:
+                            batch.status = "ARCHIVED"
+                            session.commit()
+                            st.success(
+                                f"{batch.batch_number} archived.")
+                            st.rerun()
+                    else:
+                        unarchive = st.button(
+                            "Unarchive Batch",
+                            key=f"unarchive_{batch.id}")
+                        if unarchive:
+                            batch.status = "ACTIVE"
+                            session.commit()
+                            st.success(f"{batch.batch_number} unarchived.")
+                            st.rerun()
                     st.divider()
                     with st.expander("Delete Batch"):
                         confirm = st.checkbox("I understand this cannot be undone.",
@@ -161,6 +229,15 @@ for grade_name, grade_batches in grades.items():
                             if existing_layers>0:
                                     st.error("Cannot delete batch because it exists in a dispenser.")
                             else:
+                                transaction=PowderTransaction(
+                                    transaction_date=date.today(),
+                                    grade=batch.grade,
+                                    heat_no=batch.batch_number,
+                                    condition=batch.condition,
+                                    amount=-batch.kg,
+                                    transaction_type="Batch Creation Error",
+                                    reference_id=batch.id)
+                                session.add(transaction)
                                 session.delete(batch)
                                 session.commit()
                                 st.success("Batch deleted.")

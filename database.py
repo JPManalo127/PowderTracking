@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy import Column, Integer, String, Float, Date
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 engine = create_engine(
@@ -49,6 +49,7 @@ class Build(Base):
     recovery_batch = Column(String)
     recovery_weight = Column(Float)
     dispenser_name = Column(String)
+    build_weight = Column(Float, nullable=True)
 
 class BuildConsumption(Base):
     __tablename__ = "build_consumption"
@@ -63,6 +64,27 @@ class BatchComponent(Base):
     parent_batch = Column(String)
     component_batch = Column(String)
     kg = Column(Float)
+
+class MonthlyBalance(Base):
+    __tablename__= "monthly_balances"
+    id = Column(Integer, primary_key=True)
+    grade = Column(String)
+    heat_no = Column(String)
+    condition = Column(String)
+    amount = Column(Float)
+    year = Column(Integer)
+    month = Column(Integer)
+
+class PowderTransaction(Base):
+    __tablename__ = "powder_transaction"
+    id = Column(Integer, primary_key=True)
+    transaction_date = Column(Date)
+    grade = Column(String)
+    heat_no = Column(String)
+    condition = Column(String)
+    amount = Column(Float)
+    transaction_type = Column(String)
+    reference_id = Column(Integer, nullable=True)
 
 def get_recovery_batch(session):
 

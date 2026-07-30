@@ -1,5 +1,6 @@
 import streamlit as st
-from database import Session, Dispenser, Batch, DispenserLayer
+from database import Session, Dispenser, Batch, DispenserLayer, PowderTransaction
+from datetime import datetime
 
 session = Session()
 
@@ -114,7 +115,16 @@ for dispenser in dispensers:
                         )
                         batch.kg -= amount
                         dispenser.kg_in_dispenser += amount
+                        transaction=PowderTransaction(
+                            transaction_date=datetime.today(),
+                            grade=batch.grade,
+                            heat_no=batch.batch_number,
+                            condition=batch.condition,
+                            amount=-amount,
+                            transaction_type=dispenser.current_machine,
+                            reference_id=dispenser.id)
                         session.add(new_layer)
+                        session.add(transaction)
                         session.commit()
                         st.success(
                             f"{amount} kg added from {batch.batch_number}"
@@ -123,12 +133,12 @@ for dispenser in dispensers:
         st.divider()
         with st.expander("Edit Dispenser"):
             with st.form(f"edit_{dispenser.id}"):
-                machine = st.text_input(
-                    "Current Machine",
-                    value=dispenser.current_machine or "")
-                material = st.text_input(
-                    "Material",
-                    value=dispenser.material or "")
+                machine = st.selectbox(
+                    "Machine",
+                    ["3604", "3583", "3985", "0028", "NONE"])
+                material = st.selectbox(
+                    "Grade",
+                    ["BOH L718AMS","BOH L718 API","BOH L175","HOG Ti64 G5","HOG Ti64 G2-3","BOH W722"])
                 weight = st.number_input(
                     "Weight (kg)",
                     min_value=0.0,
