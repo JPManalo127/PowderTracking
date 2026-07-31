@@ -264,6 +264,33 @@ for build in builds:
                     )
         else:
             st.info("No powder recovery information.")
+
+# Debug: show BatchComponent rows and sums
+with st.expander("Debug: BatchComponent table (show/hide)"):
+    from collections import defaultdict
+    components = session.query(BatchComponent).order_by(BatchComponent.parent_batch, BatchComponent.component_batch).all()
+    if not components:
+        st.write("No BatchComponent rows found.")
+    else:
+        # Show raw rows
+        rows = [
+            {
+                "parent_batch": c.parent_batch,
+                "component_batch": c.component_batch,
+                "kg": float(c.kg or 0.0)
+            }
+            for c in components
+        ]
+        st.dataframe(rows)
+
+        # Summarize per parent batch
+        sums = defaultdict(float)
+        for r in rows:
+            sums[r["parent_batch"]] += r["kg"]
+        st.write("Per-parent batch totals:")
+        for parent, total in sums.items():
+            st.write(f"{parent}: {total:.2f} kg")
+
 st.divider()
 col1, col2, col3 = st.columns([1,2,1])
 with col1:
