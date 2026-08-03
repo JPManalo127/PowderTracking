@@ -42,6 +42,18 @@ with st.expander("➕ Add New Dispenser"):
             st.success("Dispenser added.")
             st.rerun()
 st.divider()
+show_inactive = st.checkbox(
+    "Show Inactive Dispensers",
+    value=False)
+if show_inactive:
+    dispensers = session.query(Dispenser).all()
+else:
+    dispensers = (
+        session.query(Dispenser)
+        .filter(Dispenser.status == "ACTIVE")
+        .all())
+st.header("Current Dispensers")
+st.write(f"Total Dispensers: {len(dispensers)}")
 st.header("Current Dispensers")
 st.write(f"Total Dispensers: {len(dispensers)}")
 for dispenser in dispensers:
