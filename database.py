@@ -86,6 +86,22 @@ class PowderTransaction(Base):
     transaction_type = Column(String)
     reference_id = Column(Integer, nullable=True)
 
+class Sieve(Base):
+    __tablename__ = "sieves"
+    id = Column(Integer, primary_key=True)
+    sieve_id = Column(String, unique=True)
+    material = Column(String)
+    status = Column(String)
+    build_number = Column(String)
+
+class SieveRun(Base):
+    __tablename__ = "sieve_run"
+    id = Column(Integer, primary_key=True)
+    build_number = Column(String)
+    sieve_id = Column(String)
+    recovered_weight = Column(Float)
+    status = Column(String)
+
 def get_recovery_batch(session):
 
     batches = session.query(Batch).filter(

@@ -1,5 +1,5 @@
 import streamlit as st
-from database import Session, Build, Dispenser, DispenserLayer, BuildConsumption, Batch, BatchComponent, PowderTransaction, get_recovery_batch
+from database import Session, Build, Dispenser, DispenserLayer, BuildConsumption, Batch, BatchComponent, PowderTransaction, get_recovery_batch, Sieve, SieveRun
 from datetime import date
 
 session = Session()
@@ -64,9 +64,25 @@ builds = (
     .all())
 st.caption(f"Showing {builds_per_page} builds per page")
 for build in builds:
-    with st.expander(
-        f"{build.build_number} | {build.build_date}"
-        ):
+    with st.expander(f"{build.build_number} | {build.build_date}"):
+        available_sieves = (
+            session.query(Sieve)
+            .filter_by(status="INACTIVE")
+            .all())
+        assigned_sieves=(
+            session.query(SieveRun)
+            .filter(
+                SieveRun.build_number == build.build_number
+            ).all())
+        total_recovered=sum(
+            run.recovered_weight or 0
+            for run in assigned_sieves)
+        all_complete=(
+            len(assigned_sieves)>0
+            and
+            all(
+                run.recovered_weight is not None
+                for run in assigned_sieves))
         st.subheader("Build Weight")
         build_weight=st.number_input(
             "Build Weight (kg)",
@@ -84,136 +100,228 @@ for build in builds:
                 session.commit()
                 st.success("Build weight saved.")
                 st.rerun()
-        with st.expander("Generate Recovery Batch"):
-            recovery_weight = st.number_input(
-                "Recovered Weight (kg)",
-                min_value=0.0,
-                key=f"recover_{build.id}"
-                )
-            generate = st.button(
-                "Generate Batch",
-                key=f"generate_{build.id}"
-                )
-            if generate:
-                if build.build_weight is None:
-                    st.error("Please enter and save the build weight first.")
-                    st.stop()
-                if build.build_weight <= build.powder_used:
-                    st.error("Build weight must be greater than plate weight.")
-                    st.stop()
-                if build.recovery_batch:
-                    st.warning(f"Recovery Batch {build.recovery_batch} already exists.")
-                    st.stop()
-                total_processed=((build.build_weight - build.powder_used)+recovery_weight)
-                dispenser = session.query(
-                    Dispenser
-                    ).filter_by(
-                        dispenser_name=build.dispenser_name
-                        ).first()
-                if dispenser.feed_direction=="DOWN":
-                    layers = session.query(
-                        DispenserLayer
-                        ).filter_by(
-                            dispenser_id=dispenser.id
-                            ).order_by(
-                                DispenserLayer.position.asc()
-                                ).all()
-                else:
-                    layers=session.query(
-                        DispenserLayer
-                        ).filter_by(
-                            dispenser_id=dispenser.id
-                            ).order_by(
-                                DispenserLayer.position.desc()
-                                ).all()
-                available_powder=sum(
-                    layer.kg
-                    for layer in layers)
-                if available_powder < total_processed:
-                    st.error(
-                        f"Not enough powder available."
-                        f"Need {total_processed:.2f} kg,"
-                        f"but only {available_powder:.2f} kg exists."
-                        )
-                    st.stop()
-                remaining = total_processed
-                consumption_records=[]
-                for layer in layers:
-                    if remaining <= 0:
-                        break
-                    consumed = min(layer.kg,
-                                   remaining)
-                    consumption = BuildConsumption(
+        with st.expander("Sieve Recovered Powder"):
+            assigned_sieves = (
+                session.query(SieveRun)
+                .filter(
+                    SieveRun.build_number == build.build_number
+                ).all())
+            total_recovered = sum(
+                run.recovered_weight or 0
+                for run in assigned_sieves)
+            all_complete = (
+                len(assigned_sieves) > 0
+                and
+                all(
+                    run.recovered_weight is not None
+                    for run in assigned_sieves))
+            if not available_sieves:
+                st.warning("No sieves available")
+            else:
+                available_names=[
+                    sieve.sieve_id
+                    for sieve in available_sieves]
+                selected_sieve = st.selectbox(
+                    "Select Sieve",
+                    available_names,
+                    key=f"sieve_select_{build.id}")
+                assign_sieve=st.button(
+                    "Sieve Powder",
+                    key=f"assign_sieve_{build.id}")
+            if assign_sieve:
+                sieve=(
+                    session.query(Sieve)
+                    .filter_by(sieve_id=selected_sieve)
+                    .first())
+                existing=(
+                    session.query(SieveRun)
+                    .filter_by(
                         build_number=build.build_number,
-                        batch_number=layer.batch_number,
-                        kg=consumed)
-                    source_batch=(session.query(Batch)
-                                  .filter_by(batch_number=layer.batch_number)
-                                  .first())      
-                    session.add(consumption)
-                    consumption_records.append(consumption)
-                    layer.kg-=consumed
-                    remaining-=consumed
-                    if layer.kg <= 0:
-                        session.delete(layer)
-                if remaining>0:
-                    st.error(f"Not enough powder available."
-                             f"Short {remaining:,2f}kg.")
-                    session.rollback()
-                    st.stop()
-                remaining_layers = session.query(
-                    DispenserLayer
-                ).filter_by(
-                    dispenser_id=dispenser.id
-                ).all()
-                dispenser.kg_in_dispenser = sum(
-                    layer.kg
-                    for layer in remaining_layers
-                )
-                consumption_records=session.query(
-                    BuildConsumption
+                        sieve_id=sieve.sieve_id)
+                    .first())
+                if existing:
+                    st.warning("This sieve is already assigned.")
+                else:
+                    sieve.status="ACTIVE"
+                    sieve.build_number=build.build_number
+                    run=SieveRun(
+                        build_number=build.build_number,
+                        sieve_id=sieve.sieve_id,
+                        status="ACTIVE")
+                    session.add(run)
+                    session.commit()
+                    st.success(f"{sieve.sieve_id} assigned to {build.build_number}")
+                    st.rerun()
+            st.subheader("Sieves Being Used")
+            assigned_sieves = (
+                session.query(SieveRun)
+                .filter(
+                    SieveRun.build_number == build.build_number
+                ).all())
+            total_recovered = sum(
+                run.recovered_weight or 0
+                for run in assigned_sieves)
+            all_complete = (
+                len(assigned_sieves) > 0
+                and
+                all(
+                    run.recovered_weight is not None
+                    for run in assigned_sieves))
+            if not assigned_sieves:
+                st.info("No sieves currently assigned.")
+            else:
+                for run in assigned_sieves:
+                    if run.recovered_weight is not None:
+                        st.success(f"{run.sieve_id}: {run.recovered_weight:.2f} kg")
+                    else:
+                        weight=st.number_input(
+                            f"{run.sieve_id} Recovered Weight (kg)",
+                            min_value=0.0,
+                            key=f"weight_{run.id}")
+                        save_weight = st.button(
+                            f"Save {run.sieve_id}",
+                            key=f"save_weight_{run.id}")
+                        if save_weight:
+                            run.recovered_weight = weight
+                            sieve=(
+                                session.query(Sieve)
+                                .filter_by(sieve_id=run.sieve_id)
+                                .first())
+                            if sieve:
+                                sieve.status="INACTIVE"
+                                sieve.build_number=None
+                            session.commit()
+                            st.success(f"{run.sieve_id} completed.")
+                            st.rerun()
+        with st.expander("Generate Recovery Batch"):
+            recovery_weight = total_recovered
+            st.write(f"Recovered Weight: {recovery_weight:.2f} kg")
+            if not all_complete:
+                st.info("Complete all assigned sieves before generating a recovery batch.")
+            else:
+                generate=st.button(
+                    "Generate Recovery Batch",
+                    key=f"recover_{build.id}")
+                if generate:
+                    if build.build_weight is None:
+                        st.error("Please enter and save the build weight first.")
+                        st.stop()
+                    if build.build_weight <= build.powder_used:
+                        st.error("Build weight must be greater than plate weight.")
+                        st.stop()
+                    if build.recovery_batch:
+                        st.warning(f"Recovery Batch {build.recovery_batch} already exists.")
+                        st.stop()
+                    total_processed=((build.build_weight - build.powder_used)+recovery_weight)
+                    dispenser = session.query(
+                        Dispenser
+                        ).filter_by(
+                            dispenser_name=build.dispenser_name
+                            ).first()
+                    if dispenser.feed_direction=="DOWN":
+                        layers = session.query(
+                            DispenserLayer
+                            ).filter_by(
+                                dispenser_id=dispenser.id
+                                ).order_by(
+                                    DispenserLayer.position.asc()
+                                    ).all()
+                    else:
+                        layers=session.query(
+                            DispenserLayer
+                            ).filter_by(
+                                dispenser_id=dispenser.id
+                                ).order_by(
+                                    DispenserLayer.position.desc()
+                                    ).all()
+                    available_powder=sum(
+                        layer.kg
+                        for layer in layers)
+                    if available_powder < total_processed:
+                        st.error(
+                            f"Not enough powder available."
+                            f"Need {total_processed:.2f} kg,"
+                            f"but only {available_powder:.2f} kg exists."
+                            )
+                        st.stop()
+                    remaining = total_processed
+                    consumption_records=[]
+                    for layer in layers:
+                        if remaining <= 0:
+                            break
+                        consumed = min(layer.kg,
+                                       remaining)
+                        consumption = BuildConsumption(
+                            build_number=build.build_number,
+                            batch_number=layer.batch_number,
+                            kg=consumed)
+                        source_batch=(session.query(Batch)
+                                      .filter_by(batch_number=layer.batch_number)
+                                      .first())      
+                        session.add(consumption)
+                        consumption_records.append(consumption)
+                        layer.kg-=consumed
+                        remaining-=consumed
+                        if layer.kg <= 0:
+                            session.delete(layer)
+                    if remaining>0:
+                        st.error(f"Not enough powder available."
+                                 f"Short {remaining:,2f}kg.")
+                        session.rollback()
+                        st.stop()
+                    remaining_layers = session.query(
+                        DispenserLayer
                     ).filter_by(
-                        build_number=build.build_number
-                        ).all()
-                source_batch=session.query(
-                    Batch
-                    ).filter_by(
-                        batch_number=consumption_records[0].batch_number
-                        ).first()
-                grade=source_batch.grade
-                new_batch_number=get_recovery_batch(session)
-                new_batch=Batch(
-                    batch_number=new_batch_number,
-                    grade=grade,
-                    condition="Sieved",
-                    kg=recovery_weight,
-                    location="Sieve",
-                    status="ACTIVE"
+                        dispenser_id=dispenser.id
+                    ).all()
+                    dispenser.kg_in_dispenser = sum(
+                        layer.kg
+                        for layer in remaining_layers
                     )
-                transaction = PowderTransaction(
-                    transaction_date=date.today(),
-                    grade=grade,
-                    heat_no=new_batch_number,
-                    condition="Sieved",
-                    amount=recovery_weight,
-                    transaction_type="Storage",
-                    reference_id=build.id)
-                for record in consumption_records:
-                    percent=record.kg/total_processed
-                    component_weight=(
-                        recovery_weight*percent)
-                    component=BatchComponent(
-                    parent_batch=new_batch_number,
-                    component_batch=record.batch_number,
-                    kg=component_weight)
-                    session.add(component)
-                build.recovery_batch=new_batch_number
-                build.recovery_weight=recovery_weight
-                session.add(transaction)
-                session.add(new_batch)
-                session.commit()
-                st.success(f"Recovery Batch {new_batch_number} created.")
-                st.rerun()
+                    consumption_records=session.query(
+                        BuildConsumption
+                        ).filter_by(
+                            build_number=build.build_number
+                            ).all()
+                    source_batch=session.query(
+                        Batch
+                        ).filter_by(
+                            batch_number=consumption_records[0].batch_number
+                            ).first()
+                    grade=source_batch.grade
+                    new_batch_number=get_recovery_batch(session)
+                    new_batch=Batch(
+                        batch_number=new_batch_number,
+                        grade=grade,
+                        condition="Sieved",
+                        kg=recovery_weight,
+                        location="Sieve",
+                        status="ACTIVE"
+                        )
+                    transaction = PowderTransaction(
+                        transaction_date=date.today(),
+                        grade=grade,
+                        heat_no=new_batch_number,
+                        condition="Sieved",
+                        amount=recovery_weight,
+                        transaction_type="Storage",
+                        reference_id=build.id)
+                    for record in consumption_records:
+                        percent=record.kg/total_processed
+                        component_weight=(
+                            recovery_weight*percent)
+                        component=BatchComponent(
+                        parent_batch=new_batch_number,
+                        component_batch=record.batch_number,
+                        kg=component_weight)
+                        session.add(component)
+                    build.recovery_batch=new_batch_number
+                    build.recovery_weight=recovery_weight
+                    session.add(transaction)
+                    session.add(new_batch)
+                    session.commit()
+                    st.success(f"Recovery Batch {new_batch_number} created.")
+                    st.rerun()
         st.write(f"Dispenser: {build.dispenser_name}")
         st.write(f"Build Number: {build.build_number}")
         st.write(f"Build Date: {build.build_date}")
