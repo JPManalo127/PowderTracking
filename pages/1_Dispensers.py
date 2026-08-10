@@ -14,7 +14,9 @@ with st.expander("➕ Add New Dispenser"):
 
         name = st.text_input("Dispenser Name")
         machine = st.text_input("Current Machine")
-        material = st.text_input("Material")
+        material = st.selectbox(
+            "Material",
+            ["BOH L718 AMS","BOH L718 API","BOH L175","HOG Ti64 G5","HOG Ti64 G2-3","BOH W722"])
         weight = st.number_input(
             "Weight (kg)",
             min_value=0.0,
@@ -97,6 +99,7 @@ for dispenser in dispensers:
                     min_value=0.0,
                     step=0.1
                     )
+                sieved_powder=st.checkbox("Sieved Powder Bucket")
                 add_batch = st.form_submit_button("Add Batch to Dispenser")
                 add_all = st.form_submit_button("Add All")
                 batch=batch_options[selected_batch]
@@ -119,14 +122,18 @@ for dispenser in dispensers:
                                 ],
                             default=0
                             )
+                        bucket_tare=11.3
+                        actual_amount=amount
+                        if sieved_powder:
+                            actual_amount=max(0, amount-bucket_tare)
                         new_layer = DispenserLayer(
                         dispenser_id=dispenser.id,
                         batch_number=batch.batch_number,
-                        kg=amount,
+                        kg=actual_amount,
                         position=highest_position + 1
                         )
                         batch.kg -= amount
-                        dispenser.kg_in_dispenser += amount
+                        dispenser.kg_in_dispenser += actual_amount
                         transaction=PowderTransaction(
                             transaction_date=datetime.today(),
                             grade=batch.grade,
