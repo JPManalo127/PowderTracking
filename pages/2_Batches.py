@@ -13,7 +13,7 @@ with st.expander("+ Add New Batch"):
         batch_number = st.text_input("Batch Number")
         grade = st.selectbox(
             "Grade",
-            ["BOH L718 AMS","BOH L718 API","BOH L175","HOG Ti64 G5","HOG Ti64 G2-3","BOH W722"])
+            ["BOH L718 AMS","BOH L718 API","BOH L175","HOG Ti64 G5","HOG Ti64 G2-3","BOH W722", "316L"])
         condition = st.selectbox(
             "Condition",
             ["Virgin","Sieved","Not Sieved"]
