@@ -157,7 +157,7 @@ for dispenser in dispensers:
                     ["3604", "3583", "3985", "0028", "NONE"])
                 material = st.selectbox(
                     "Grade",
-                    ["BOH L718 AMS","BOH L718 API","BOH L175","HOG Ti64 G5","HOG Ti64 G2-3","BOH W722"])
+                    ["BOH L718 AMS","BOH L718 API","BOH L175","HOG Ti64 G5","HOG Ti64 G2-3","BOH W722","316L"])
                 weight = st.number_input(
                     "Weight (kg)",
                     min_value=0.0,
