@@ -7,9 +7,12 @@ DATABASE_URL = st.secrets["NEON_DB_URL"]
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True)
+    pool_pre_ping=True,
+    pool_recycle=300)
 
-Session = sessionmaker(bind=engine)
+Session = sessionmaker(
+    bind=engine,
+    expire_on_commit=False)
 
 Base = declarative_base()
 
