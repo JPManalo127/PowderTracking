@@ -21,6 +21,7 @@ st.set_page_config(
     page_title="Admin",
     layout="wide")
 st.subheader("Database Information")
+session=Session()
 try:
     session.query(Batch).count()
     st.success("Connected to Neon PostgreSQL Database")
