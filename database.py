@@ -1,14 +1,17 @@
+import streamlit as st
 from sqlalchemy import create_engine
 from sqlalchemy import Column, Integer, String, Float, Date
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+DATABASE_URL = st.secrets["NEON_DB_URL"]
+
 engine = create_engine(
-    "sqlite:///powder_tracker.db")
+    DATABASE_URL,
+    pool_pre_ping=True)
 
 Session = sessionmaker(bind=engine)
 
 Base = declarative_base()
-
 
 class Dispenser(Base):
     __tablename__ = "dispensers"
