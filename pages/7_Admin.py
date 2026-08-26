@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from migration import migrate_csvs
 
 from io import BytesIO
 from datetime import datetime
@@ -251,4 +252,17 @@ if not report_df.empty:
 
 else:
     st.info("No transactions found for selected criteria.")
+st.subheader("One-Time CSV Migration")
+
+if st.button("Run CSV Migration"):
+
+    try:
+        results = migrate_csvs()
+
+        for result in results:
+            st.success(result)
+
+    except Exception as e:
+        st.error(str(e))
+
 session.close()

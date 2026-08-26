@@ -1,9 +1,15 @@
 import streamlit as st
+import os
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, Float, Date
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = st.secrets["NEON_DB_URL"]
+LOCAL_DEV = os.getenv("LOCAL_DEV","0") == "1"
+
+if LOCAL_DEV:
+    DATABASE_URL = "sqlite:///powdertracking_test.db"
+else:
+    DATABASE_URL = st.secrets["NEON_DB_URL"]
 
 engine = create_engine(
     DATABASE_URL,
@@ -50,12 +56,13 @@ class Build(Base):
     __tablename__ = "builds"
     id = Column(Integer, primary_key=True)
     build_number = Column(String, unique=True, nullable=False)
-    build_date = Column(String)
+    build_date = Column(DateTime)
     powder_used = Column(Float)
     recovery_batch = Column(String)
     recovery_weight = Column(Float)
     dispenser_name = Column(String)
     build_weight = Column(Float, nullable=True)
+    build_end = Column(DateTime, nullable=True)
 
 class BuildConsumption(Base):
     __tablename__ = "build_consumption"
@@ -84,7 +91,7 @@ class MonthlyBalance(Base):
 class PowderTransaction(Base):
     __tablename__ = "powder_transaction"
     id = Column(Integer, primary_key=True)
-    transaction_date = Column(Date)
+    transaction_date = Column(DateTime)
     grade = Column(String)
     heat_no = Column(String)
     condition = Column(String)

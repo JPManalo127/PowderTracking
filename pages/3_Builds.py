@@ -1,6 +1,6 @@
 import streamlit as st
 from database import Session, Build, Dispenser, DispenserLayer, BuildConsumption, Batch, BatchComponent, PowderTransaction, get_recovery_batch, Sieve, SieveRun
-from datetime import date
+from datetime import date, datetime
 
 session = Session()
 
@@ -9,7 +9,6 @@ st.title("Builds")
 st.subheader("Record Build")
 with st.form("record_build"):
     build_number = st.text_input("Build Number")
-    build_date = st.date_input("Build Date")
     dispensers = session.query(
         Dispenser
         ).filter_by(
@@ -23,26 +22,21 @@ with st.form("record_build"):
                                       list(machine_options.keys())
                                       )
     dispenser=machine_options[selected_machine]
-    plate_weight = st.number_input(
-        "Plate Weight (kg)",
+    start_disp = st.number_input(
+        "Start Dispenser Weight (kg)",
         min_value=0.0
         )
     submit = st.form_submit_button("Record Build")
     if submit:
-        if plate_weight > dispenser.kg_in_dispenser:
-            st.error(
-                f"only {dispenser.kg_in_dispenser} kg available in this dispenser."
-                )
-        else:
-            build = Build(build_number=build_number,
-                          build_date=str(build_date),
-                          dispenser_name=dispenser.dispenser_name,
-                          powder_used=plate_weight
-                          )
-            session.add(build)
-            session.commit()
-            st.success(f"Build {build_number} recorded.")
-            st.rerun()    
+        build = Build(build_number=build_number,
+                      build_date=datetime.now(),
+                      dispenser_name=dispenser.dispenser_name,
+                      powder_used=start_disp
+                      )
+        session.add(build)
+        session.commit()
+        st.success(f"Build {build_number} recorded.")
+        st.rerun()    
 st.divider()
 st.header("Build History")
 builds_per_page=10
@@ -64,7 +58,7 @@ builds = (
     .all())
 st.caption(f"Showing {builds_per_page} builds per page")
 for build in builds:
-    with st.expander(f"{build.build_number} | {build.build_date}"):
+    with st.expander(f"{build.build_number} | {build.build_date:%Y-%m-%d %H:%M}"):
         available_sieves = (
             session.query(Sieve)
             .filter_by(status="INACTIVE")
@@ -83,23 +77,39 @@ for build in builds:
             all(
                 run.recovered_weight is not None
                 for run in assigned_sieves))
-        st.subheader("Build Weight")
-        build_weight=st.number_input(
-            "Build Weight (kg)",
+        added_powder = 0
+        if build.build_end:
+            dispenser = (
+                session.query(Dispenser)
+                .filter_by(
+                    dispenser_name=build.dispenser_name)
+                .first())
+            added_transactions = (
+                session.query(PowderTransaction)
+                .filter(
+                    PowderTransaction.transaction_date >= build.build_date,
+                    PowderTransaction.transaction_date <= build.build_end,
+                    PowderTransaction.transaction_type == dispenser.current_machine)
+                .all())
+            added_powder=abs(
+                sum(
+                    t.amount
+                    for t in added_transactions
+                    if t.amount < 0))
+        st.subheader("Build Data")
+        end_disp=st.number_input(
+            "End Dispenser Weight (kg)",
             min_value=0.0,
-            value=float(build.build_weight or 0),
-            key=f"build_weight_{build.id}")
-        save_build_weight=st.button(
+            key=f"end_disp_{build.id}")
+        save_end_disp=st.button(
             "Save",
-            key=f"save_build_weight_{build.id}")
-        if save_build_weight:
-            if build_weight <= build.powder_used:
-                st.error("Build weight must be greater than plate weight.")
-            else:
-                build.build_weight=build_weight
-                session.commit()
-                st.success("Build weight saved.")
-                st.rerun()
+            key=f"save_end_disp_{build.id}")
+        if save_end_disp:
+            build.build_weight = end_disp
+            build.build_end=datetime.now()
+            session.commit()
+            st.success("End weight saved.")
+            st.rerun()
         with st.expander("Sieve Recovered Powder"):
             assigned_sieves = (
                 session.query(SieveRun)
@@ -115,6 +125,7 @@ for build in builds:
                 all(
                     run.recovered_weight is not None
                     for run in assigned_sieves))
+            assign_sieve=False
             if not available_sieves:
                 st.warning("No sieves available")
             else:
@@ -204,15 +215,30 @@ for build in builds:
                     key=f"recover_{build.id}")
                 if generate:
                     if build.build_weight is None:
-                        st.error("Please enter and save the build weight first.")
-                        st.stop()
-                    if build.build_weight <= build.powder_used:
-                        st.error("Build weight must be greater than plate weight.")
+                        st.error("Please enter and save the end dispenser weight first.")
                         st.stop()
                     if build.recovery_batch:
                         st.warning(f"Recovery Batch {build.recovery_batch} already exists.")
                         st.stop()
-                    total_processed=((build.build_weight - build.powder_used)+recovery_weight)
+                    dispenser=(
+                        session.query(Dispenser)
+                        .filter_by(
+                            dispenser_name=build.dispenser_name
+                            ).first())
+                    added_transactions=(
+                        session.query(PowderTransaction)
+                        .filter(
+                            PowderTransaction.transaction_date >= build.build_date,
+                            PowderTransaction.transaction_date <= build.build_end,
+                            PowderTransaction.transaction_type == dispenser.current_machine
+                            ).all())
+                    added_powder = abs(
+                        sum(
+                            t.amount
+                            for t in added_transactions
+                            if t.amount < 0))
+                    st.write(f"Added Powder Found: {added_powder:.2f} kg")
+                    total_processed=((build.powder_used+added_powder)-build.build_weight)
                     dispenser = session.query(
                         Dispenser
                         ).filter_by(
@@ -299,7 +325,7 @@ for build in builds:
                         status="ACTIVE"
                         )
                     transaction = PowderTransaction(
-                        transaction_date=date.today(),
+                        transaction_date=datetime.now(),
                         grade=grade,
                         heat_no=new_batch_number,
                         condition="Sieved",
@@ -324,24 +350,28 @@ for build in builds:
                     st.rerun()
         st.write(f"Dispenser: {build.dispenser_name}")
         st.write(f"Build Number: {build.build_number}")
-        st.write(f"Build Date: {build.build_date}")
+        st.write(f"Build Date: {build.build_date:%Y-%m-%d %H:%M}")
         st.subheader("Build Composition")
         if build.build_weight is None:
-            st.error("Please enter and save the build weight before generating a recovery batch.")
+            st.error("Please enter and save the end dispenser weight before generating a recovery batch.")
         else:
-            build_only_weight=(build.build_weight-build.powder_used)
+            build_waste = (((build.powder_used + added_powder) - build.build_weight) - (build.recovery_weight or 0))
+            build_only_weight = build_waste
             st.write(f"Build Weight: {build_only_weight} kg")
             consumption_records=session.query(
                 BuildConsumption
                 ).filter_by(
                     build_number=build.build_number
                     ).all()
-            total_processed=((build.build_weight-build.powder_used)+(build.recovery_weight or 0))
-            for record in consumption_records:
-                ratio=(record.kg/total_processed)
-                build_component=(build_only_weight*ratio)
-                st.write(f"{record.batch_number}: "
-                         f"{build_component:.2f} kg")
+            total_processed=((build.powder_used+added_powder)-build.build_weight)
+            if total_processed <= 0:
+                st.warning("Total processed powder is not available yet.")
+            else:
+                for record in consumption_records:
+                    ratio=(record.kg/total_processed)
+                    build_component=(build_only_weight*ratio)
+                    st.write(f"{record.batch_number}: "
+                             f"{build_component:.2f} kg")
         st.divider()
         if build.recovery_batch:
             st.subheader("Traceability Summary")
@@ -350,7 +380,7 @@ for build in builds:
                 ).filter_by(
                     build_number=build.build_number
                     ).all()
-            total_processed=((build.build_weight-build.powder_used)+build.recovery_weight)
+            total_processed=((build.powder_used+added_powder)-build.build_weight)
             for record in consumption_records:
                 st.write(f"{record.batch_number}: {record.kg:.2f} kg")     
             st.write(f"Total Powder Consumed: {total_processed:.2f} kg")
