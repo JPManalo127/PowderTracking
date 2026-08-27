@@ -115,6 +115,19 @@ class SieveRun(Base):
     recovered_weight = Column(Float)
     status = Column(String)
 
+class WasteReport(Base):
+    __tablename__ = "waste_reports"
+    id = Column(Integer, primary_key=True)
+    build_number = Column(String)
+    build_date = Column(DateTime)
+    grade = Column(String)
+    total_processed = Column(Float)
+    recovery_weight = Column(Float)
+    build_waste = Column(Float)
+    waste_factor = Column(Float)
+    waste_weight = Column(Float)
+    build_weight = Column(Float)
+
 def get_recovery_batch(session):
 
     batches = session.query(Batch).filter(

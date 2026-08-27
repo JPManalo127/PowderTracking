@@ -16,6 +16,7 @@ from database import (
     PowderTransaction,
     Sieve,
     SieveRun,
+    WasteReport
 )
 st.set_page_config(
     page_title="Admin",
@@ -74,7 +75,8 @@ table_name = st.selectbox(
         "Batch Components",
         "Monthly Balances",
         "Sieves",
-        "Sieve Runs"
+        "Sieve Runs",
+        "Waste Reports"
     ]
 )
 table_mapping = {
@@ -88,6 +90,7 @@ table_mapping = {
     "Monthly Balances": MonthlyBalance,
     "Sieves": Sieve,
     "Sieve Runs": SieveRun,
+    "Waste Reports": WasteReport
 }
 model = table_mapping[table_name]
 records = session.query(model).all()

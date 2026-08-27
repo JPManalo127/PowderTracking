@@ -1,9 +1,16 @@
 import streamlit as st
-from database import Session, Build, Dispenser, DispenserLayer, BuildConsumption, Batch, BatchComponent, PowderTransaction, get_recovery_batch, Sieve, SieveRun
+from database import Session, Build, Dispenser, DispenserLayer, BuildConsumption, Batch, BatchComponent, PowderTransaction, get_recovery_batch, Sieve, SieveRun, WasteReport
 from datetime import date, datetime
 
 session = Session()
-
+waste_factors={
+    "BOH L718 API": 0.075,
+    "HOG Ti64 G2-3": 0.03,
+    "HOG Ti64 G5": 0.03,
+    "316L": 0.05,
+    "BOH L718 AMS": 0.075,
+    "BOH L175": 0.1205
+    }
 st.title("Builds")
 
 st.subheader("Record Build")
@@ -84,6 +91,9 @@ for build in builds:
                 .filter_by(
                     dispenser_name=build.dispenser_name)
                 .first())
+            waste_factor = waste_factors.get(
+                dispenser.material,
+                0.05)
             added_transactions = (
                 session.query(PowderTransaction)
                 .filter(
@@ -343,6 +353,20 @@ for build in builds:
                         session.add(component)
                     build.recovery_batch=new_batch_number
                     build.recovery_weight=recovery_weight
+                    build_waste = (((build.powder_used + added_powder) - build.build_weight) - (build.recovery_weight or 0))
+                    waste_weight = (build_waste*waste_factor)
+                    build_only_weight = (build_waste-waste_weight)
+                    waste_record = WasteReport(
+                        build_number=build.build_number,
+                        build_date=build.build_date,
+                        grade=dispenser.material,
+                        total_processed=total_processed,
+                        recovery_weight=recovery_weight,
+                        build_waste=build_waste,
+                        waste_factor=waste_factor,
+                        waste_weight=waste_weight,
+                        build_weight=build_only_weight)
+                    session.add(waste_record)
                     session.add(transaction)
                     session.add(new_batch)
                     session.commit()
@@ -356,7 +380,8 @@ for build in builds:
             st.error("Please enter and save the end dispenser weight before generating a recovery batch.")
         else:
             build_waste = (((build.powder_used + added_powder) - build.build_weight) - (build.recovery_weight or 0))
-            build_only_weight = build_waste
+            waste_weight = (build_waste*waste_factor)
+            build_only_weight = (build_waste-waste_weight)
             st.write(f"Build Weight: {build_only_weight} kg")
             consumption_records=session.query(
                 BuildConsumption
@@ -384,6 +409,8 @@ for build in builds:
             for record in consumption_records:
                 st.write(f"{record.batch_number}: {record.kg:.2f} kg")     
             st.write(f"Total Powder Consumed: {total_processed:.2f} kg")
+            st.write(f"Total Build Waste: ~{waste_weight:.2f} kg")
+            st.write(f"Waste Factor: {waste_factor:.2%}")
             st.divider()
             st.subheader("Recovery Batch")
             st.write(f"Batch: {build.recovery_batch}")
