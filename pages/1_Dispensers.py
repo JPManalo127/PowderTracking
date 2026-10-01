@@ -88,67 +88,77 @@ for dispenser in dispensers:
                 batch_options = {
                     batch.batch_number: batch
                     for batch in batches
-                    if batch.kg > 0
-                    }
-                selected_batch = st.selectbox(
-                    "Select Batch",
-                    list(batch_options.keys())
-                    )
-                amount = st.number_input(
-                    "Amount (kg)",
-                    min_value=0.0,
-                    step=0.1
-                    )
-                sieved_powder=st.checkbox("Sieved Powder Bucket")
-                add_batch = st.form_submit_button("Add Batch to Dispenser")
-                add_all = st.form_submit_button("Add All")
-                batch=batch_options[selected_batch]
-                if add_all:
-                    amount=batch.kg
-                if add_batch or add_all:
-                    if amount > batch.kg:
-                        st.error(
-                            f"Only{batch.kg} kg available."
-                            )
-                    else:
-                        highest_position=max(
-                            [
-                                layer.position
-                                for layer in session.query(
-                                    DispenserLayer
-                                    ).filter_by(
-                                            dispenser_id=dispenser.id
-                                        ).all()
-                                ],
-                            default=0
-                            )
-                        bucket_tare=11.3
-                        actual_amount=amount
-                        if sieved_powder:
-                            actual_amount=max(0, amount-bucket_tare)
-                        new_layer = DispenserLayer(
-                        dispenser_id=dispenser.id,
-                        batch_number=batch.batch_number,
-                        kg=actual_amount,
-                        position=highest_position + 1
+                    if (
+                        batch.kg > 0
+                        and batch.grade == dispenser.material
                         )
-                        batch.kg -= amount
-                        dispenser.kg_in_dispenser += actual_amount
-                        transaction=PowderTransaction(
-                            transaction_date=datetime.today(),
-                            grade=batch.grade,
-                            heat_no=batch.batch_number,
-                            condition=batch.condition,
-                            amount=-amount,
-                            transaction_type=dispenser.current_machine,
-                            reference_id=dispenser.id)
-                        session.add(new_layer)
-                        session.add(transaction)
-                        session.commit()
-                        st.success(
-                            f"{amount} kg added from {batch.batch_number}"
+                    }
+                if not batch_options:
+                    st.info(
+                        f"No available batches for "
+                        f"{dispenser.material}")
+                else:
+                    selected_batch = st.selectbox(
+                        "Select Batch",
+                        list(batch_options.keys()),
+                        format_func=lambda x:
+                            f"{x} ({batch_options[x].kg:.2f} kg)")
+                    batch = batch_options[selected_batch]
+                    amount = st.number_input(
+                        "Amount (kg)",
+                        min_value=0.0,
+                        step=0.1
+                        )
+                    sieved_powder=st.checkbox("Sieved Powder Bucket")
+                    add_batch = st.form_submit_button("Add Batch to Dispenser")
+                    add_all = st.form_submit_button("Add All")
+                    batch=batch_options[selected_batch]
+                    if add_all:
+                        amount=batch.kg
+                    if add_batch or add_all:
+                        if amount > batch.kg:
+                            st.error(
+                                f"Only{batch.kg} kg available."
+                                )
+                        else:
+                            highest_position=max(
+                                [
+                                    layer.position
+                                    for layer in session.query(
+                                        DispenserLayer
+                                        ).filter_by(
+                                                dispenser_id=dispenser.id
+                                            ).all()
+                                    ],
+                                default=0
+                                )
+                            bucket_tare=11.3
+                            actual_amount=amount
+                            if sieved_powder:
+                                actual_amount=max(0, amount-bucket_tare)
+                            new_layer = DispenserLayer(
+                            dispenser_id=dispenser.id,
+                            batch_number=batch.batch_number,
+                            kg=actual_amount,
+                            position=highest_position + 1
                             )
-                    st.rerun()
+                            batch.kg -= amount
+                            dispenser.kg_in_dispenser += actual_amount
+                            transaction=PowderTransaction(
+                                transaction_date=datetime.today(),
+                                grade=batch.grade,
+                                heat_no=batch.batch_number,
+                                condition=batch.condition,
+                                amount=-amount,
+                                transaction_type=dispenser.current_machine,
+                                reference_id=dispenser.id)
+                            session.add(new_layer)
+                            session.add(transaction)
+                            session.commit()
+                            st.success(
+                                f"{amount} kg added from {batch.batch_number}"
+                                )
+                        st.rerun()
         st.divider()
         with st.expander("Edit Dispenser"):
             with st.form(f"edit_{dispenser.id}"):

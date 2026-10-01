@@ -59,10 +59,12 @@ class Build(Base):
     build_date = Column(DateTime)
     powder_used = Column(Float)
     recovery_batch = Column(String)
-    recovery_weight = Column(Float)
+    total_processed = Column(Float)
     dispenser_name = Column(String)
     build_weight = Column(Float, nullable=True)
     build_end = Column(DateTime, nullable=True)
+    remaining_powder = Column(Float)
+    waste = Column(Float)
 
 class BuildConsumption(Base):
     __tablename__ = "build_consumption"
@@ -77,16 +79,6 @@ class BatchComponent(Base):
     parent_batch = Column(String)
     component_batch = Column(String)
     kg = Column(Float)
-
-class MonthlyBalance(Base):
-    __tablename__= "monthly_balances"
-    id = Column(Integer, primary_key=True)
-    grade = Column(String)
-    heat_no = Column(String)
-    condition = Column(String)
-    amount = Column(Float)
-    year = Column(Integer)
-    month = Column(Integer)
 
 class PowderTransaction(Base):
     __tablename__ = "powder_transaction"
@@ -105,15 +97,23 @@ class Sieve(Base):
     sieve_id = Column(String, unique=True)
     material = Column(String)
     status = Column(String)
-    build_number = Column(String)
 
 class SieveRun(Base):
     __tablename__ = "sieve_run"
     id = Column(Integer, primary_key=True)
-    build_number = Column(String)
     sieve_id = Column(String)
-    recovered_weight = Column(Float)
     status = Column(String)
+    recovered_weight = Column(Float)
+    recovery_batch = Column(String)
+    date_created = Column(DateTime)
+    date_completed = Column(DateTime)
+
+class SieveRunBuild(Base):
+    __tablename__ = "assigned builds"
+    id = Column(Integer, primary_key=True)
+    sieve_run_id = Column(Integer)
+    build_number = Column(String)
+    source_weight = Column(Float)
 
 class WasteReport(Base):
     __tablename__ = "waste_reports"
@@ -127,6 +127,8 @@ class WasteReport(Base):
     waste_factor = Column(Float)
     waste_weight = Column(Float)
     build_weight = Column(Float)
+
+
 
 def get_recovery_batch(session):
 
